@@ -159,3 +159,55 @@ test("antigravity SSE streaming parses thinking, text, tool calls, and usage acr
 		assert.equal(result.usage.cacheRead, 20);
 	}
 });
+test("antigravity toolId rewrites copilot-style tool IDs for Claude models while preserving matching IDs and leaving Gemini IDs untouched", async () => {
+	const copilotId = "call_abc1234567890def123456789|dGVzdCt2YWx1ZS93aXRoK3NwZWNpYWwvY2hhcnM9PQ==";
+	const mixedContext = normalizeContext({
+		messages: [
+			{ role: "user", content: "Check this" },
+			{
+				role: "assistant",
+				content: [{ type: "toolCall", id: copilotId, name: "lookup", arguments: { q: "test" } }],
+			},
+			{
+				role: "toolResult",
+				toolCallId: copilotId,
+				toolName: "lookup",
+				content: [{ type: "text", text: "result text" }],
+			},
+		],
+	});
+
+	let claudePayload: unknown;
+	const claudeEngine = piEngineForSpec({ provider: "antigravity-subscription", id: "claude-opus-4-6" }, false);
+	await claudeEngine.streamFn(claudeEngine.model, mixedContext, {
+		fetch: async (_input, init) => {
+			claudePayload = JSON.parse(init?.body as string);
+			return new Response('data: [DONE]\n\n', { status: 200, headers: { "content-type": "text/event-stream" } });
+		},
+	}).result();
+
+	const getContents = (payload: any) => payload?.request?.contents ?? payload?.contents;
+	const claudeContents = getContents(claudePayload);
+	const claudeCall = claudeContents?.find((c: any) => c.role === "model")?.parts.find((p: any) => p.functionCall)?.functionCall;
+	const claudeResp = claudeContents?.find((c: any, i: number) => i > 0 && c.role === "user")?.parts.find((p: any) => p.functionResponse)?.functionResponse;
+	assert(claudeCall?.id);
+	assert(claudeResp?.id);
+	assert.equal(claudeCall.id, claudeResp.id);
+	assert(/^[a-zA-Z0-9_-]{1,64}$/.test(claudeCall.id));
+	assert.notEqual(claudeCall.id, copilotId);
+
+	let geminiPayload: unknown;
+	const geminiEngine = piEngineForSpec({ provider: "antigravity-subscription", id: "gemini-3.8-flash" }, false);
+	await geminiEngine.streamFn(geminiEngine.model, mixedContext, {
+		fetch: async (_input, init) => {
+			geminiPayload = JSON.parse(init?.body as string);
+			return new Response('data: [DONE]\n\n', { status: 200, headers: { "content-type": "text/event-stream" } });
+		},
+	}).result();
+
+	const geminiContents = getContents(geminiPayload);
+	const geminiCall = geminiContents?.find((c: any) => c.role === "model")?.parts.find((p: any) => p.functionCall)?.functionCall;
+	const geminiResp = geminiContents?.find((c: any, i: number) => i > 0 && c.role === "user")?.parts.find((p: any) => p.functionResponse)?.functionResponse;
+	assert.equal(geminiCall?.id, copilotId);
+	assert.equal(geminiResp?.id, copilotId);
+});

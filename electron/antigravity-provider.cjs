@@ -808,9 +808,17 @@ function extractTools(context) {
 	return [...byName.values()];
 }
 
+function claudeToolId(id) {
+	const raw = String(id);
+	if (/^[a-zA-Z0-9_-]{1,64}$/.test(raw)) return raw;
+	const digest = createHash("sha256").update(raw).digest("hex").slice(0, 16);
+	return `${raw.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 47)}_${digest}`;
+}
+
 function convertMessagesToContents(context, model) {
 	const contents = [];
 	const isClaudeModel = Boolean(model?.id?.startsWith("claude-"));
+	const toolId = (id) => (isClaudeModel ? claudeToolId(id) : String(id));
 	const pushTurn = (role, parts) => {
 		if (!parts || parts.length === 0) return;
 		const last = contents[contents.length - 1];
@@ -868,7 +876,7 @@ function convertMessagesToContents(context, model) {
 						functionCall: {
 							name: block.name,
 							args: block.arguments && typeof block.arguments === "object" ? block.arguments : {},
-							...(block.id ? { id: String(block.id) } : {}),
+							...(block.id ? { id: toolId(block.id) } : {}),
 						},
 						...(isSameModel && block.thoughtSignature ? { thoughtSignature: block.thoughtSignature } : {}),
 					});
@@ -885,7 +893,7 @@ function convertMessagesToContents(context, model) {
 					functionResponse: {
 						name: msg.toolName || "tool",
 						response: msg.isError ? { error: responseText } : { output: responseText },
-						...(msg.toolCallId ? { id: String(msg.toolCallId) } : {}),
+						...(msg.toolCallId ? { id: toolId(msg.toolCallId) } : {}),
 					},
 				},
 			]);
