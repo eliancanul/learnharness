@@ -42,15 +42,36 @@ const path = require("node:path");
 // renderer owns the number; this is the IPC widen target).
 const SIDEBAR_AUTOCLOSE = 928;
 
-const PRODUCT_NAME = "LearnHarness";
+const PRODUCT_NAME = "LearnHarness Gemini";
 
 // APP NAME → userData (owner, 2026-10-10): the Application Support dir is
-// exactly "LearnHarness" in dev AND packaged. Packaged Electron would
-// otherwise derive it from package.json "name" (now lowercase
-// "learnharness"), and productName metadata alone doesn't reach app.name.
-// Must run before the LH_DEV_URL suffix below — dev becomes
-// "LearnHarness-dev".
+// exactly "LearnHarness Gemini" in dev AND packaged.
 app.setName(PRODUCT_NAME);
+
+// Auto-link shared LearnHarness data so learning progress and credentials appear in both apps
+function ensureSharedUserDataLinks() {
+	try {
+		const myDir = app.getPath("userData");
+		const sharedDir = path.join(path.dirname(myDir), "LearnHarness");
+		if (!fs.existsSync(sharedDir) || sharedDir === myDir) return;
+		fs.mkdirSync(myDir, { recursive: true });
+		for (const item of ["data", "auth.json", "chatgpt-credentials.json"]) {
+			const src = path.join(sharedDir, item);
+			const dst = path.join(myDir, item);
+			if (fs.existsSync(src) && !fs.existsSync(dst)) {
+				try {
+					fs.symlinkSync(src, dst);
+				} catch {
+					/* best effort */
+				}
+			}
+		}
+	} catch {
+		/* best effort */
+	}
+}
+ensureSharedUserDataLinks();
+
 const AUTH_FILE = () => path.join(app.getPath("userData"), "auth.json");
 const DATA_DIR = () => path.join(app.getPath("userData"), "data");
 
@@ -509,6 +530,10 @@ function setupAutoUpdater() {
 		reportUpdateStatus("disabled");
 		return;
 	}
+	// For custom LearnHarness Gemini, disable auto-update to prevent overwriting with upstream
+	log("auto-update: custom LearnHarness Gemini build — updater disabled");
+	reportUpdateStatus("disabled");
+	return;
 	try {
 		autoUpdater = require("electron-updater").autoUpdater;
 	} catch (err) {
