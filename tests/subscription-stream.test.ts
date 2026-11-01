@@ -163,16 +163,24 @@ test("antigravity toolId rewrites copilot-style tool IDs for Claude models while
 	const copilotId = "call_abc1234567890def123456789|dGVzdCt2YWx1ZS93aXRoK3NwZWNpYWwvY2hhcnM9PQ==";
 	const mixedContext = normalizeContext({
 		messages: [
-			{ role: "user", content: "Check this" },
+			{ role: "user", content: "Check this", timestamp: 0 },
 			{
 				role: "assistant",
 				content: [{ type: "toolCall", id: copilotId, name: "lookup", arguments: { q: "test" } }],
+				api: "openai-responses",
+				provider: "github-copilot",
+				model: "gpt-5.3-codex",
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+				stopReason: "toolUse",
+				timestamp: 1,
 			},
 			{
 				role: "toolResult",
 				toolCallId: copilotId,
 				toolName: "lookup",
 				content: [{ type: "text", text: "result text" }],
+				isError: false,
+				timestamp: 2,
 			},
 		],
 	});
